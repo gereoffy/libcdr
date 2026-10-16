@@ -1,3 +1,11 @@
+This is a fork of LibreOffice's libcdr with fixes made for the CorelDRAW
+support of nitroview (https://github.com/gereoffy/jpeg-nitro), one commit
+each (see git log since aaa57df): open paths not filled, text rotation,
+horizontal stretch and bold, CMYK100 colours, hidden layers skipped, symbol
+definitions not drawn as a page, transparent bitmap backgrounds, lost texts
+of CorelDRAW 5 and 7-X5 files, and iconv instead of ICU. They were checked
+against CorelDRAW's own PDF exports of real drawings.
+
 libcdr is a library and a set of tools for reading and converting binary files
 produced by Corel DRAW.
 
