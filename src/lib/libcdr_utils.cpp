@@ -15,7 +15,14 @@
 #include <string.h>
 
 #include <cerrno>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>   // MultiByteToWideChar: Windows has no iconv
+#include <cstdlib>
+#else
 #include <iconv.h>
+#endif
 
 #define CDR_NUM_ELEMENTS(array) sizeof(array)/sizeof(array[0])
 
@@ -80,6 +87,29 @@ static void _appendUCS4(librevenge::RVNGString &text, uint32_t ucs4Character)
 // convert are skipped, as before.
 static void _appendCodepage(librevenge::RVNGString &text, const std::vector<unsigned char> &characters, const char *codepage)
 {
+#ifdef _WIN32
+  // Windows' own converter, the code page number from the "CPnnnn" name; characters it can't
+  // convert (its replacement character) are skipped
+  const unsigned cp = strncmp(codepage, "CP", 2) == 0 ? (unsigned)atoi(codepage + 2) : 0;
+  if (!cp || characters.empty())
+    return;
+  const int n = MultiByteToWideChar(cp, 0, reinterpret_cast<const char *>(&characters[0]), (int)characters.size(), nullptr, 0);
+  if (n <= 0)
+    return;
+  std::vector<wchar_t> wide((size_t)n);
+  MultiByteToWideChar(cp, 0, reinterpret_cast<const char *>(&characters[0]), (int)characters.size(), &wide[0], n);
+  for (size_t i = 0; i < wide.size(); ++i)
+  {
+    uint32_t c = (uint16_t)wide[i];
+    if (c >= 0xd800 && c < 0xdc00 && i + 1 < wide.size() && (uint16_t)wide[i + 1] >= 0xdc00 && (uint16_t)wide[i + 1] < 0xe000)
+    {
+      c = SURROGATE_VALUE(c, (uint16_t)wide[i + 1]);
+      ++i;
+    }
+    if (c != 0xfffd && isUnicodeChar(c))
+      _appendUCS4(text, c);
+  }
+#else
   iconv_t cd = iconv_open("UTF-32LE", codepage);
   if (cd == (iconv_t)-1)
     return;
@@ -106,6 +136,7 @@ static void _appendCodepage(librevenge::RVNGString &text, const std::vector<unsi
     }
   }
   iconv_close(cd);
+#endif
 }
 
 } // anonymous namespace

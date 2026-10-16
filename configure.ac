@@ -99,8 +99,9 @@ AC_SUBST(ZLIB_LIBS)
 # Find iconv
 # ==========
 # (character sets: in the C library with glibc, libiconv on macOS and elsewhere)
-AC_MSG_CHECKING([for iconv])
 ICONV_LIBS=
+AS_CASE([$host_os], [mingw*|cygwin*|msys*], [], [
+AC_MSG_CHECKING([for iconv])
 AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <iconv.h>]], [[iconv_close(iconv_open("UTF-8", "CP1250"));]])],
 	[AC_MSG_RESULT([yes])],
 	[save_LIBS="$LIBS"
@@ -110,6 +111,7 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <iconv.h>]], [[iconv_close(iconv_open
 		ICONV_LIBS=-liconv],
 		[AC_MSG_ERROR([iconv not found])])
 	LIBS="$save_LIBS"])
+])   # (Windows: MultiByteToWideChar, no iconv)
 AC_SUBST(ICONV_LIBS)
 
 
