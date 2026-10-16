@@ -402,6 +402,14 @@ void libcdr::appendCharacters(librevenge::RVNGString &text, std::vector<unsigned
       _appendUCS4(text, ucs4Character);
     }
   }
+  // CorelDRAW for Mac text: its charsets are often wrong too (Hungarian text marked Baltic);
+  // not tried for code pages with letters in 0x80..0x9f (Cyrillic, Arabic) or none (Hebrew, Thai)
+  else if (charset != 0xcc && charset != 0xb2 && charset != 0xb1 && charset != 0xde &&
+           isMacText(&characters[0], characters.size()))
+  {
+    for (unsigned char c : characters)
+      _appendUCS4(text, c < 0x80 ? c : macCentralEurope[c - 0x80]);
+  }
   else
   {
     const char *codepage;
@@ -447,12 +455,6 @@ void libcdr::appendCharacters(librevenge::RVNGString &text, std::vector<unsigned
       codepage = "CP1250";
       break;
     default:   // ANSI, DEFAULT and others: often Central European text (old Hungarian files)
-      if (isMacText(&characters[0], characters.size()))
-      {
-        for (unsigned char c : characters)
-          _appendUCS4(text, c < 0x80 ? c : macCentralEurope[c - 0x80]);
-        return;
-      }
       codepage = getEncoding(&characters[0], characters.size()) == 0xee ? "CP1250" : "CP1252";
       break;
     }
