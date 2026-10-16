@@ -95,15 +95,22 @@ PKG_CHECK_MODULES([ZLIB],[zlib])
 AC_SUBST(ZLIB_CFLAGS)
 AC_SUBST(ZLIB_LIBS)
 
-# ========
-# Find icu
-# ========
-PKG_CHECK_MODULES([ICU], [icu-i18n >= 75 icu-uc >= 75],
-	[AX_CXX_COMPILE_STDCXX_17],
-	[PKG_CHECK_MODULES([ICU], [icu-i18n])]
-)
-AC_SUBST(ICU_CFLAGS)
-AC_SUBST(ICU_LIBS)
+# ==========
+# Find iconv
+# ==========
+# (character sets: in the C library with glibc, libiconv on macOS and elsewhere)
+AC_MSG_CHECKING([for iconv])
+ICONV_LIBS=
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <iconv.h>]], [[iconv_close(iconv_open("UTF-8", "CP1250"));]])],
+	[AC_MSG_RESULT([yes])],
+	[save_LIBS="$LIBS"
+	LIBS="$LIBS -liconv"
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <iconv.h>]], [[iconv_close(iconv_open("UTF-8", "CP1250"));]])],
+		[AC_MSG_RESULT([-liconv])
+		ICONV_LIBS=-liconv],
+		[AC_MSG_ERROR([iconv not found])])
+	LIBS="$save_LIBS"])
+AC_SUBST(ICONV_LIBS)
 
 
 # ===========================
