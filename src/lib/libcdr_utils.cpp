@@ -24,9 +24,9 @@
 namespace
 {
 
-// No charset given: CorelDRAW then wrote the system's ANSI code page. Without ICU's charset
-// detector: Central European (windows-1250) when the text has its o/u with double acute
-// (0xd5 0xdb 0xf5 0xfb: Hungarian; the same bytes are rare in windows-1252), else ANSI.
+// No charset given (or ANSI / DEFAULT, which old Hungarian files also use for Central European
+// text): without ICU's charset detector, windows-1250 when the text has its o/u with double
+// acute (0xd5 0xdb 0xf5 0xfb: Hungarian; the same bytes are rare in windows-1252), else 1252.
 static unsigned short getEncoding(const unsigned char *buffer, unsigned long bufferLength)
 {
   if (!buffer)
@@ -308,6 +308,10 @@ void libcdr::appendCharacters(librevenge::RVNGString &text, std::vector<unsigned
     0x23A0, 0x23A4, 0x23A5, 0x23A6, 0x23AB, 0x23AC, 0x23AD, 0x0020  // .. 0xFE
   };
 
+  // East Asian charsets: old files (CorelDRAW 5) mark Hungarian text with them too, and
+  // nitroview is not meant for CJK text: guess as when no charset is given
+  if (charset == 0x80 || charset == 0x81 || charset == 0x86 || charset == 0x88)
+    charset = 0;
   if (!charset && !characters.empty())
     charset = getEncoding(&characters[0], characters.size());
 
@@ -368,8 +372,8 @@ void libcdr::appendCharacters(librevenge::RVNGString &text, std::vector<unsigned
     case 0xee: // CENTRAL EUROPE
       codepage = "CP1250";
       break;
-    default:
-      codepage = "CP1252";
+    default:   // ANSI, DEFAULT and others: often Central European text (old Hungarian files)
+      codepage = getEncoding(&characters[0], characters.size()) == 0xee ? "CP1250" : "CP1252";
       break;
     }
     _appendCodepage(text, characters, codepage);
