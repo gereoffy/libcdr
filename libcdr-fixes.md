@@ -169,10 +169,15 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
 - An outline's type byte 0 is no outline (it was a black hairline round every shape).
 - A group's transform is the last 24 bytes of the 0x8c part of its "more data" record; that part
   may or may not have 10 more bytes before them (a drawing came out stretched into a line).
+- Bitmaps are embedded PCX (`0a 05 01 01`, 1-bit, RLE) and TIFF (`II*\0`; one seen: 1-bit,
+  PackBits) files; libcdr takes only BMP (`BM`), so they are missing. Not done.
 - Not decoded: CorelDRAW 2 text (object type 3: characters of 2 bytes, character and flags, a
   flagged one followed by a 12-byte style) and CorelDRAW 3 (`RIFF....CDR `) text (3 bytes a
-  character after a style block). No reference renders exist: CorelDRAW 5 crashes importing
-  CorelDRAW 2 files with text (WIN87EM.DLL), CorelDRAW 9 does not open them.
+  character after a style block). No reference renders exist: CorelDRAW 5 (under Windows 2000
+  in a VM) crashes opening CorelDRAW 2 files with text (WIN87EM.DLL; with a floating point fix,
+  CDRTXT50.DLL or CDRMAI50.DLL), and CorelDRAW 4 files as well; CorelDRAW 9 does not open
+  CorelDRAW 2 files. Only CorelDRAW 2 files without text opened (two clip arts: their shapes
+  match).
 
 ## Fuzzing
 
