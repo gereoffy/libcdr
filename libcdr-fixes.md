@@ -1,0 +1,181 @@
+# What this fork fixes, and what it found out about the format
+
+The fixes this fork makes to libcdr for nitroview's CorelDRAW support, and the structures of the
+CorelDRAW format they rely on; one commit each (`git log` since aaa57df has the details). Upstream
+libcdr reads the old versions (4 and 5) only partly and little of this is documented elsewhere.
+
+Each finding was checked against CorelDRAW's PDF exports of the same files (CorelDRAW 9 for
+versions 4 and 5, CorelDRAW 2022 for the later ones: a PDF gives exact glyph positions, sizes and
+colours), against the files' embedded previews, against one document saved by CorelDRAW 2022 in
+every version from X5 to 2022, or, where noted, against CorelDRAW 5 itself.
+
+Version numbers are libcdr's (`m_version`): 400 for CorelDRAW 4 (`RIFF....CDR4`), 500 for 5, 1400
+for X4 and so on. Values are little-endian; offsets are from the start of a record's data.
+
+A caveat about the CorelDRAW 9 PDFs of old files: CorelDRAW 9 does not have CorelDRAW 4/5's own
+fonts (Switzerland, Frankenstein, Stamp, ...) and substitutes them (often with AvantGarde Bk BT),
+so those PDFs say nothing about which font such a name stands for. Positions and sizes still match.
+
+## CorelDRAW 4
+
+**Font records.** `font`: u16 id, then the name (NUL-terminated); no encoding field and no 14 bytes
+as in version 5 (reading them ran off the record: the files did not open).
+
+**Artistic text.** The characters are inside the object, not in a text record: in a `loda` of
+object type 0x04, the argument of type 0x1e is u16 0, u16 the number of characters, u16 (a
+length), then 3 bytes a character: u8 flags, u8 character, u8 0. Flag bit 0: 22 more bytes follow
+(a per-character style override; not decoded). Lines end in CR LF, one line break. The text's
+style is the object's style argument. There is no text id in the record: one must be made up per
+object (the stream position is relative to the substream: every text got the same one).
+
+**Fill and outline.** A text's characters take the fill and outline of the text object itself;
+its style's are the default text style's (a list of names drawn with an outline and no fill came
+out filled black).
+
+**Font style.** In a `styd` font argument: 1 normal, 2 bold, 4 italic (3 not seen); not
+CorelDRAW 5's style word (bold headings came out normal).
+
+## CorelDRAW 5
+
+**Font records.** `font`: u16 id, u16 (always 0x40 in the samples: not a character set), 14
+bytes, the name. As that field is no character set, the Symbol font's characters are mapped by the
+font's name (its code page: S is Σ, m is μ, 0xB3 is ≥; formulas showed Latin letters, logic gates
+"³1" for "≥1").
+
+**Paragraph text frames.** The frame's argument: 2 bytes (not 4 as later), then the width and the
+height (the height was read as the width, the next field, 1, as the height).
+
+**Bitmaps.** The bitmap spans (0, 0) .. (x, y): its coordinates were read as x1, y1 with
+x2 = y2 = 0, a 180 degree rotation.
+
+**Text records (`txsm`).**
+
+    u16 ?, u16 number of frames, frames (u16 id, u16 0) ...,
+    u16 number of paragraphs, per paragraph:
+        u16 style id, u16 number of style overrides, the overrides (36 bytes each),
+        u16 number of characters, the characters (8 bytes each)
+
+A style override; each field is used only when its flag bit is set:
+
+| offset | size | flag | |
+|---|---|---|---|
+| 0 | u8 | | flags |
+| 2 | u8 | 0x01 | font id |
+| 3 | u8 | 0x01 | character set (0: the font's) |
+| 4 | u16 | 0x02 | font style: 0x40 normal, 0x80 italic, 0x1000 bold, 0x2000 bold italic |
+| 9 | u8 | 0x02 | placement: 4 subscript |
+| 10 | s16 | 0x04 | font size (16-bit coordinate) |
+| 12 | s16 | 0x08 | rotation, 1/10 degree, counter-clockwise |
+| 14 | u32 | 0x10 | fill id |
+| 18 | u32 | 0x20 | outline id |
+| 22 | s16 | 0x40 | horizontal shift, 1/100 em |
+| 24 | s16 | 0x80 | vertical shift, 1/100 em, up positive |
+
+(Bytes 1, 6..8 and 26..35 unknown.) The shifts and rotations are what CorelDRAW 5 stores for a
+text fitted to a path (each character moved and turned onto the curve; the path itself is not
+needed) and for characters moved with the Shape tool. A shift is in the em of the character's own
+size; a rotation is about the character's origin on the baseline. A subscript is half the size
+and a fifth of the full size lower (24 pt text: 12 pt index, 4.8 pt lower; 12 pt: 6 pt, 2.4 pt
+lower); superscript was not seen.
+
+A character: 4 bytes, u8 character, 1 byte, u16 whose bits 3 and up are the style override's
+index (`(v >> 3) & 0xfe` as libcdr numbers styles). One byte per character: bit 0 of that value is
+not "two-byte character" as later (texts came out as CJK). CR LF is one line break.
+
+**Arrowheads (`arrw`).** u32 id (what an outline's start / end marker field refers to), 2 bytes
+(4 from version 6), u16 number of points n, 4 bytes, n point types (as for paths), 1 byte, n
+points: s16 along the line, s16 across it. The tip is at the origin, the body at negative "along"
+values. Upstream reads `arrw` from version 6 only: CorelDRAW 5 lines had none. Size, in every
+version: 1000 units are twice the line's width, but no less than 0.028 inch (2.016 pt; measured
+on four files: 2.016 pt on 0.216 and 0.72 pt lines, 2.88 pt on 1.44 pt lines).
+
+## CorelDRAW 4 and 5 styles (`styd`)
+
+The intervals argument: six u16 percents: character spacing (signed), word spacing, line
+spacing, spacing before a paragraph, after it, (unknown); they were skipped. The font argument
+holds the font style after the size (see above). The idents argument has four values (indents);
+not used yet.
+
+## Text layout, all versions
+
+CorelDRAW's rules as measured on its PDF exports; libcdr passes the values on (line height,
+paragraph margins, its own `libcdr:` span properties), the renderer lays the text out so.
+
+- **Line spacing**: a baseline is `spacing × (previous line's descent + this line's ascent)` below
+  the previous one. In a paragraph text frame a paragraph's first line is
+  `before × (previous descent + ascent) + after(previous paragraph) × (previous ascent + descent)`
+  below it instead; artistic text has line spacing only. Versions 8+: the `stlt` interval records
+  (52 bytes): u32 id, then (u32 fields) ?, ?, character spacing, ?, word spacing, line spacing,
+  before, after, ?, ?, ?, unit (0: shares, 1000000 = 100%; 1 (version 14+): lengths of the line,
+  before and after, 1/254000 inch). They were skipped.
+- **Character spacing** is a share of a space's width, added after each character; a space's width
+  is `space × (word spacing − character spacing)`, so a word's last character and its space
+  together take the word spacing alone (measured per character on a PDF, to 0.1/1000 em). Texts
+  fitted to a path include it: their characters' places are relative to the spaced layout.
+- **Empty lines** have the previous line's ascent and descent, but not more than the text's own
+  size gives; an empty paragraph keeps its style. A line break's own size is the text's (the
+  line break character may be in a symbol font: it stays a line break, not a converted glyph).
+- **A leading line break** makes no line, in every version (texts often start with one to sit a
+  line lower than another block; counted, they sat a line lower than meant).
+- **Shifts and rotations**: versions 7 to X5 text style fields 0x10 / 0x20 are the characters'
+  horizontal / vertical shift (1/100 em) and 0x08 (4 bytes, before them) their rotation in
+  1/1000000 degree; X6+ style strings `h_shift`, `v_shift`. PDF imports place each word of a line
+  by shifts.
+- **Texts fitted to a path**, versions 8 to 15: after the text and its 0 come 24 bytes a
+  character: s32 shift x, s32 shift y (1/100 em, up positive), s32 rotation (1/1000000 degree,
+  counter-clockwise), 12 bytes 0. Version 16 and later: the same (rotation 0..360 degrees). The
+  text is laid out left aligned (the places include the alignment); a mirrored transform mirrors
+  the places, not the characters (the vertical shift turns over).
+- **Font styles**: the style word is 0x40 normal, 0x80 italic, 0x1000 bold, 0x2000 bold italic, in
+  every version; it is read from paragraph styles too (the `stlt` font records: from CorelDRAW 10
+  they hold three sizes, Latin, RTL, East Asian, before the styles); X6+ style strings
+  `weight` (64 normal, 4096 bold) and `italic`. Font sizes are kept to 1/100 pt.
+- **Text outlines** (a style's outline) are drawn over the characters' fill; a text with no fill
+  has outlined characters only. X6+ style strings: an outline with a `type` (0: solid) and a
+  width is drawn, one without (width 0) is none.
+- **Artistic text** is anchored at its transformed origin (the first baseline at the alignment
+  point) and turned around it; a stretched or squeezed one keeps its font size, the stretch is in
+  its transform (`style:text-scale`). Text frames keep their rotation (three corners give it).
+- **Code pages**: CorelDRAW wrote the system's ANSI code page when a text has no character set,
+  and old Hungarian files mark Central European text as ANSI, DEFAULT or an East Asian charset:
+  windows-1250 when the text has o/u with double acute, else windows-1252. CorelDRAW for Mac
+  writes charset 0 (or Baltic) with Mac Central European text (letters in 0x80..0x9f).
+- **Version 7 to X5**: a character style's 0x20 field is a fill id (+ 48 bytes from version 15)
+  or a single 0 byte, which was not skipped (the text was read one byte off and dropped).
+
+## Other drawing fixes
+
+- Open paths are not filled.
+- Layers with flag 0x100 and none of the shown / printed bits are skipped (hidden layers of
+  imported PDFs).
+- X6+ symbol definitions (`LIST sytr` in root.dat) are not drawn as a page of their own.
+- A bitmap's transparency mask (8 bits, after the image in its `bmp` record, with a header of its
+  own and no palette) becomes its alpha; a bitmap's outline clips it (`libcdr:clip-path`); a 1-bit
+  bitmap takes its object's colours.
+- Embedded (OLE) objects: the document's `ole2` record is an OLE storage with an
+  `Embedding <n>` storage each; an object of type 0x0a (width, height, two corners) is linked to one
+  by its `olel` record (u32 ?, u32 n). The ones whose CONTENTS is an image (Photoshop, PNG, JPEG,
+  BMP, GIF) are drawn. From version 16 both records are kept in a data file (the 16-byte form: data
+  file number, length, offset).
+- `CMYK100` (CorelDRAW 2022's colour model name) is read.
+- Arrowheads go out in their own units (`libcdr:marker-start` / `-end`, SVG path data, with
+  `libcdr:marker-unit`), as `draw:marker-*-path` is transformed for ODF's drawing of markers.
+- Speed: bitmaps written into a plain buffer with each colour converted once, X6+ style strings
+  parsed once, path nodes moved instead of copied.
+- ICU is replaced with iconv (and MultiByteToWideChar on Windows).
+
+## CorelDRAW 2 (`WL`) and 3
+
+- An outline's type byte 0 is no outline (it was a black hairline round every shape).
+- A group's transform is the last 24 bytes of the 0x8c part of its "more data" record; that part
+  may or may not have 10 more bytes before them (a drawing came out stretched into a line).
+- Not decoded: CorelDRAW 2 text (object type 3: characters of 2 bytes, character and flags, a
+  flagged one followed by a 12-byte style) and CorelDRAW 3 (`RIFF....CDR `) text (3 bytes a
+  character after a style block). No reference renders exist: CorelDRAW 5 crashes importing
+  CorelDRAW 2 files with text (WIN87EM.DLL), CorelDRAW 9 does not open them.
+
+## Fuzzing
+
+Fixes for OSS-Fuzz issues (also sent upstream): bounds on polygon repetition, CMX poly-curve
+point counts, image data tag lengths, style string nesting depth, CMX jumps that do not advance,
+CMX pages read once each.
