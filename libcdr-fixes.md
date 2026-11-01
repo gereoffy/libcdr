@@ -161,6 +161,19 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   BMP, GIF) are drawn. From version 16 both records are kept in a data file (the 16-byte form: data
   file number, length, offset).
 - `CMYK100` (CorelDRAW 2022's colour model name) is read.
+- **Fountain fills** go out as CorelDRAW has them (`libcdr:gradient-type`, `-angle`, `-center-x`
+  / `-y`, `-edge`, `-stops`): ODF has no conical gradient, conical fills were drawn linear, square
+  ones round. How CorelDRAW draws them, all over the object's bounding box (measured on CorelDRAW
+  9 PDFs of one drawing saved as versions 5, 7 and 9; the same in each): the angle (counter-
+  clockwise) points from the start colour to the end colour. Linear: across the box's extent along
+  the angle; the edge pad (a share of it) is plain start / end colour at each end (30: the colours
+  run from 30% to 70%). Radial: a circle (not an ellipse), the end colour in the centre, the start
+  colour at the farthest corner. Square: a square turned by the angle, likewise. Conical: the end
+  colour towards the angle, the start colour the other way, both sides alike. The centre's offset
+  is a share of the box's width / height (up positive; 0.5 puts it on the edge); the vertical one
+  was not passed on.
+- **Two-colour patterns** are DIB pixel data, the bottom row first, rows padded to 32 bits; they
+  were turned upside down (a diagonal hatch came out mirrored).
 - Arrowheads go out in their own units (`libcdr:marker-start` / `-end`, SVG path data, with
   `libcdr:marker-unit`), as `draw:marker-*-path` is transformed for ODF's drawing of markers.
 - Speed: bitmaps written into a plain buffer with each colour converted once, X6+ style strings
