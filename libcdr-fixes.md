@@ -175,8 +175,8 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   evenly on both sides of it; it goes out as a third stop. The centre's offset
   is a share of the box's width / height (up positive; 0.5 puts it on the edge); the vertical one
   was not passed on.
-- **Two-colour patterns** are DIB pixel data, the bottom row first, rows padded to 32 bits; they
-  were turned upside down (a diagonal hatch came out mirrored).
+- Two-colour patterns: CorelDRAW 9's PDF export mirrors them (a diagonal hatch turns the other
+  way; CorelDRAW itself shows them the way libcdr draws them).
 - Arrowheads go out in their own units (`libcdr:marker-start` / `-end`, SVG path data, with
   `libcdr:marker-unit`), as `draw:marker-*-path` is transformed for ODF's drawing of markers.
 - Speed: bitmaps written into a plain buffer with each colour converted once, X6+ style strings
