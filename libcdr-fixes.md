@@ -87,7 +87,9 @@ not "two-byte character" as later (texts came out as CJK). CR LF is one line bre
 points: s16 along the line, s16 across it. The tip is at the origin, the body at negative "along"
 values. Upstream reads `arrw` from version 6 only: CorelDRAW 5 lines had none. Size, in every
 version: 1000 units are twice the line's width, but no less than 0.028 inch (2.016 pt; measured
-on four files: 2.016 pt on 0.216 and 0.72 pt lines, 2.88 pt on 1.44 pt lines).
+on four files: 2.016 pt on 0.216 and 0.72 pt lines, 2.88 pt on 1.44 pt lines; the same in versions
+7, 8 and 9). The closed parts of an arrowhead are filled, its open parts (a bar across the tip, a
+hollow triangle) are outlined, closed, with the line's width.
 
 ## CorelDRAW 4 and 5 styles (`styd`)
 
