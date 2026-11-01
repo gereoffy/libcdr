@@ -168,8 +168,11 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   clockwise) points from the start colour to the end colour. Linear: across the box's extent along
   the angle; the edge pad (a share of it) is plain start / end colour at each end (30: the colours
   run from 30% to 70%). Radial: a circle (not an ellipse), the end colour in the centre, the start
-  colour at the farthest corner. Square: a square turned by the angle, likewise. Conical: the end
-  colour towards the angle, the start colour the other way, both sides alike. The centre's offset
+  colour at the farthest corner. Square: a square turned by the angle, likewise; the edge pad of
+  these two shrinks them by twice its share (25: to half the size). Conical: the end colour
+  towards the angle, the start colour the other way, both sides alike. A two colour fill's
+  midpoint (versions 7+, a byte in percent; 0 in version 5) is where the colours are half mixed,
+  evenly on both sides of it; it goes out as a third stop. The centre's offset
   is a share of the box's width / height (up positive; 0.5 puts it on the edge); the vertical one
   was not passed on.
 - **Two-colour patterns** are DIB pixel data, the bottom row first, rows padded to 32 bits; they
