@@ -1449,13 +1449,17 @@ void libcdr::CDRContentCollector::_generateBitmapFromPattern(librevenge::RVNGBin
   writeU32(bitmap, 0); // ColorsUsed
   writeU32(bitmap, 0); // ColorsImportant
 
-  // The Bitmaps in CDR are padded to 32bit border
+  // The patterns are DIB pixel data: the bottom row first (as in the bitmap made here; written
+  // top row first, diagonal hatches came out mirrored), rows padded to 32 bits
   unsigned lineWidth = (width + 7) / 8;
+  const unsigned paddedWidth = (width + 31) / 32 * 4;
+  if (paddedWidth && pattern.pattern.size() / paddedWidth >= height)
+    lineWidth = paddedWidth;
 
   unsigned foreground = m_ps._getRGBColor(fgColor);
   unsigned background = m_ps._getRGBColor(bgColor);
 
-  for (unsigned j = height; j > 0; --j)
+  for (unsigned j = 0; j < height; ++j)
   {
     unsigned i = 0;
     unsigned k = 0;
@@ -1463,7 +1467,7 @@ void libcdr::CDRContentCollector::_generateBitmapFromPattern(librevenge::RVNGBin
     {
       unsigned l = 0;
       unsigned char c = 0;
-      const unsigned index = (j-1)*lineWidth+i;
+      const unsigned index = j*lineWidth+i;
       if (index < pattern.pattern.size())
         c = pattern.pattern[index];
       i++;
