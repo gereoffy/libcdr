@@ -382,10 +382,6 @@ void libcdr::appendCharacters(librevenge::RVNGString &text, std::vector<unsigned
     0x23A0, 0x23A4, 0x23A5, 0x23A6, 0x23AB, 0x23AC, 0x23AD, 0x0020  // .. 0xFE
   };
 
-  // East Asian charsets: old files (CorelDRAW 5) mark Hungarian text with them too, and
-  // nitroview is not meant for CJK text: guess as when no charset is given
-  if (charset == 0x80 || charset == 0x81 || charset == 0x86 || charset == 0x88)
-    charset = 0;
   if (!charset && !characters.empty())
     charset = getEncoding(&characters[0], characters.size());
 
