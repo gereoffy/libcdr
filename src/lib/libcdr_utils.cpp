@@ -415,8 +415,11 @@ void libcdr::appendCharacters(librevenge::RVNGString &text, std::vector<unsigned
     }
   }
   // CorelDRAW for Mac text: its charsets are often wrong too (Hungarian text marked Baltic);
-  // not tried for code pages with letters in 0x80..0x9f (Cyrillic, Arabic) or none (Hebrew, Thai)
+  // not tried for code pages with letters in 0x80..0x9f (Cyrillic, Arabic), none (Hebrew, Thai)
+  // or two bytes a character (East Asian: Shift-JIS lead bytes are 0x81..0x9f, katakana came out
+  // as Mac Central European letters)
   else if (charset != 0xcc && charset != 0xb2 && charset != 0xb1 && charset != 0xde &&
+           charset != 0x80 && charset != 0x81 && charset != 0x86 && charset != 0x88 &&
            isMacText(&characters[0], characters.size()))
   {
     for (unsigned char c : characters)
