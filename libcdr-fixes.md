@@ -140,8 +140,10 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   point) and turned around it; a stretched or squeezed one keeps its font size, the stretch is in
   its transform (`style:text-scale`). Text frames keep their rotation (three corners give it).
 - **Code pages**: CorelDRAW wrote the system's ANSI code page when a text has no character set,
-  and old Hungarian files mark Central European text as ANSI, DEFAULT or an East Asian charset:
-  windows-1250 when the text has o/u with double acute, else windows-1252. CorelDRAW for Mac
+  and old Hungarian files mark Central European text as ANSI or DEFAULT (CorelDRAW 5 files also
+  as an East Asian charset: dropped there only): windows-1250 when the text has o/u with double
+  acute and no letter Hungarian never uses in windows-1250 (French / Portuguese grave accents, e
+  with circumflex, a with tilde: those texts are windows-1252), else windows-1252. CorelDRAW for Mac
   writes charset 0 (or Baltic) with Mac Central European text (letters in 0x80..0x9f).
 - **Version 7 to X5**: a character style's 0x20 field is a fill id (+ 48 bytes from version 15)
   or a single 0 byte, which was not skipped (the text was read one byte off and dropped).
@@ -153,7 +155,8 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   imported PDFs).
 - X6+ symbol definitions (`LIST sytr` in root.dat) are not drawn as a page of their own.
 - A bitmap's transparency mask (8 bits, after the image in its `bmp` record, with a header of its
-  own and no palette) becomes its alpha; a bitmap's outline clips it (`libcdr:clip-path`); a 1-bit
+  own and no palette) becomes its alpha (a wholly transparent bitmap is left out: alpha 0
+  everywhere reads as opaque); a bitmap's outline clips it (`libcdr:clip-path`); a 1-bit
   bitmap takes its object's colours.
 - Embedded (OLE) objects: the document's `ole2` record is an OLE storage with an
   `Embedding <n>` storage each; an object of type 0x0a (width, height, two corners) is linked to one
