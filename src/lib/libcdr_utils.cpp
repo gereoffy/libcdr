@@ -33,15 +33,31 @@ namespace
 
 // No charset given (or ANSI / DEFAULT, which old Hungarian files also use for Central European
 // text): without ICU's charset detector, windows-1250 when the text has its o/u with double
-// acute (0xd5 0xdb 0xf5 0xfb: Hungarian; the same bytes are rare in windows-1252), else 1252.
+// acute (0xd5 0xdb 0xf5 0xfb: Hungarian), else 1252. Not when it also has letters Hungarian never
+// uses in 1250 but French / Portuguese do in 1252 (a grave or circumflex e, a grave a, u, i, o,
+// an a with tilde: 1250's r with acute, c / e / n with caron...): then those bytes are 1252's
+// O / U with tilde or circumflex (sur, aout, Portuguese o with tilde came out with o / u with
+// double acute).
 static unsigned short getEncoding(const unsigned char *buffer, unsigned long bufferLength)
 {
   if (!buffer)
     return 0;
+  bool doubleAcute = false;
   for (unsigned long i = 0; i < bufferLength; i++)
-    if (buffer[i] == 0xd5 || buffer[i] == 0xdb || buffer[i] == 0xf5 || buffer[i] == 0xfb)
-      return 0xee;
-  return 0;
+  {
+    switch (buffer[i])
+    {
+    case 0xd5: case 0xdb: case 0xf5: case 0xfb:
+      doubleAcute = true;
+      break;
+    case 0xc0: case 0xc3: case 0xc8: case 0xca: case 0xcc: case 0xd2: case 0xd9:
+    case 0xe0: case 0xe3: case 0xe8: case 0xea: case 0xec: case 0xf2: case 0xf9:
+      return 0;
+    default:
+      break;
+    }
+  }
+  return doubleAcute ? 0xee : 0;
 }
 
 // Text from CorelDRAW for Mac (charset 0, Mac Central European code page): its Hungarian
