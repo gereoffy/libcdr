@@ -105,7 +105,7 @@ libcdr::CDRContentCollector::CDRContentCollector(libcdr::CDRParserState &ps, lib
     m_currentTransforms(), m_fillTransforms(), m_polygon(), m_isInPolygon(false), m_isInSpline(false),
     m_outputElementsStack(nullptr), m_contentOutputElementsStack(), m_fillOutputElementsStack(),
     m_outputElementsQueue(nullptr), m_contentOutputElementsQueue(), m_fillOutputElementsQueue(),
-    m_groupLevels(), m_groupTransforms(), m_splineData(), m_fillOpacity(1.0), m_reverseOrder(reverseOrder),
+    m_groupLevels(), m_groupTransforms(), m_writtenStartMarker(), m_writtenEndMarker(), m_splineData(), m_fillOpacity(1.0), m_reverseOrder(reverseOrder),
     m_ps(ps)
 {
   m_outputElementsStack = &m_contentOutputElementsStack;
@@ -1304,14 +1304,16 @@ void libcdr::CDRContentCollector::_lineProperties(librevenge::RVNGPropertyList &
       // arrowheads, in their own units: 1 (1000 in a CorelDRAW 5 arrw record) is twice the line's
       // width, but no less than 0.028 inch (as CorelDRAW 9's PDF exports show); the tip at the
       // line's end, the arrowhead's y axis along the line (libcdr's own properties)
-      if (!m_currentLineStyle.startMarker.empty() || !m_currentLineStyle.endMarker.empty())
+      const bool hasStartMarker = m_currentLineStyle.startMarker && !m_currentLineStyle.startMarker->empty();
+      const bool hasEndMarker = m_currentLineStyle.endMarker && !m_currentLineStyle.endMarker->empty();
+      if (hasStartMarker || hasEndMarker)
       {
         double width = m_currentLineStyle.lineWidth * scale;
         propList.insert("libcdr:marker-unit", 2.0 * (width > 0.014 ? width : 0.014));
-        if (!m_currentLineStyle.startMarker.empty())
-          propList.insert("libcdr:marker-start", markerPath(m_currentLineStyle.startMarker));
-        if (!m_currentLineStyle.endMarker.empty())
-          propList.insert("libcdr:marker-end", markerPath(m_currentLineStyle.endMarker));
+        if (hasStartMarker)
+          propList.insert("libcdr:marker-start", markerPath(*m_currentLineStyle.startMarker));
+        if (hasEndMarker)
+          propList.insert("libcdr:marker-end", markerPath(*m_currentLineStyle.endMarker));
       }
       propList.insert("svg:stroke-color", m_ps.getRGBColorString(m_currentLineStyle.color));
 
@@ -1399,39 +1401,46 @@ void libcdr::CDRContentCollector::_lineProperties(librevenge::RVNGPropertyList &
   }
 
   // Deal with line markers (arrows, etc.)
-  if (!m_currentLineStyle.startMarker.empty())
+  if (m_currentLineStyle.startMarker && !m_currentLineStyle.startMarker->empty())
   {
-    CDRPath startMarker(m_currentLineStyle.startMarker);
-    startMarker.transform(m_currentTransforms);
-    if (!m_groupTransforms.empty())
-      startMarker.transform(m_groupTransforms.top());
-    CDRTransform tmpTrafo = CDRTransform(1.0, 0.0, 0.0, 0.0, -1.0, 0);
-    startMarker.transform(tmpTrafo);
-    librevenge::RVNGString path, viewBox;
-    double width;
-    startMarker.writeOut(path, viewBox, width);
-    propList.insert("draw:marker-start-viewbox", viewBox);
-    propList.insert("draw:marker-start-path", path);
-    // propList.insert("draw:marker-start-width", width);
+    _writeMarker(m_writtenStartMarker, m_currentLineStyle.startMarker, CDRTransform(1.0, 0.0, 0.0, 0.0, -1.0, 0));
+    propList.insert("draw:marker-start-viewbox", m_writtenStartMarker.viewBox);
+    propList.insert("draw:marker-start-path", m_writtenStartMarker.path);
   }
-  if (!m_currentLineStyle.endMarker.empty())
+  if (m_currentLineStyle.endMarker && !m_currentLineStyle.endMarker->empty())
   {
-    CDRPath endMarker(m_currentLineStyle.endMarker);
-    endMarker.transform(m_currentTransforms);
-    if (!m_groupTransforms.empty())
-      endMarker.transform(m_groupTransforms.top());
-    CDRTransform tmpTrafo = CDRTransform(-1.0, 0.0, 0.0, 0.0, -1.0, 0);
-    endMarker.transform(tmpTrafo);
-    librevenge::RVNGString path, viewBox;
-    double width;
-    endMarker.writeOut(path, viewBox, width);
-    propList.insert("draw:marker-end-viewbox", viewBox);
-    propList.insert("draw:marker-end-path", path);
-    // propList.insert("draw:marker-end-width", width);
+    _writeMarker(m_writtenEndMarker, m_currentLineStyle.endMarker, CDRTransform(-1.0, 0.0, 0.0, 0.0, -1.0, 0));
+    propList.insert("draw:marker-end-viewbox", m_writtenEndMarker.viewBox);
+    propList.insert("draw:marker-end-path", m_writtenEndMarker.path);
   }
 
 
 
+}
+
+void libcdr::CDRContentCollector::_writeMarker(WrittenMarker &written, const std::shared_ptr<const CDRPath> &marker, const CDRTransform &mirror)
+{
+  bool const hasGroupTransforms = !m_groupTransforms.empty();
+  if (written.marker == marker && written.transforms == m_currentTransforms &&
+      written.hasGroupTransforms == hasGroupTransforms &&
+      (!hasGroupTransforms || written.groupTransforms == m_groupTransforms.top()))
+    return;
+
+  CDRPath path(*marker);
+  path.transform(m_currentTransforms);
+  if (hasGroupTransforms)
+    path.transform(m_groupTransforms.top());
+  path.transform(mirror);
+  written.path.clear();
+  written.viewBox.clear();
+  double width;
+  path.writeOut(written.path, written.viewBox, width);
+
+  written.marker = marker;
+  written.transforms = m_currentTransforms;
+  written.hasGroupTransforms = hasGroupTransforms;
+  if (hasGroupTransforms)
+    written.groupTransforms = m_groupTransforms.top();
 }
 
 void libcdr::CDRContentCollector::_generateBitmapFromPattern(librevenge::RVNGBinaryData &bitmap, const CDRPattern &pattern, const CDRColor &fgColor, const CDRColor &bgColor)
