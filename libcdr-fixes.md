@@ -191,6 +191,8 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
 - Radial and square fills in SVG (vector patterns' tiles): `svg:r` reaches the box's farthest corner
   from the centre, shrunk by twice the edge pad (librevenge made it the box's width: the start
   colour never reached the corners).
+- A tiled fill's vertical offset from its tile transform (ftil, CorelDRAW 9) is a share of the
+  tile's height (it was divided by the width: a texture of 1.6 x 1.0 inch moved by 40%).
 - A fountain fill's angle is the page's in CorelDRAW 5 (-47.5 for a fill of 0 on an object turned
   by it) and the object's own from version 6: it is turned (and mirrored) with the object.
 - CMX fountain fill types count from 0 (linear, radial, conical, square), CDR's from 1: the
