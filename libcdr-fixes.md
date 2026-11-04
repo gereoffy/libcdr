@@ -193,6 +193,9 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   colour never reached the corners).
 - A tiled fill's vertical offset from its tile transform (ftil, CorelDRAW 9) is a share of the
   tile's height (it was divided by the width: a texture of 1.6 x 1.0 inch moved by 40%).
+- CorelDRAW 5's bitmap patterns are full colour patterns (a picture on a page of its own): in the
+  SVG made of a pattern a picture is stretched to its box (`preserveAspectRatio="none"`), as
+  CorelDRAW draws it; it kept its proportions and left a strip of the tile empty.
 - A fountain fill's angle is the page's in CorelDRAW 5 (-47.5 for a fill of 0 on an object turned
   by it) and the object's own from version 6: it is turned (and mirrored) with the object.
 - CMX fountain fill types count from 0 (linear, radial, conical, square), CDR's from 1: the
