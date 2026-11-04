@@ -177,7 +177,19 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   midpoint (versions 7+, a byte in percent; 0 in version 5) is where the colours are half mixed,
   evenly on both sides of it; it goes out as a third stop. The centre's offset
   is a share of the box's width / height (up positive; 0.5 puts it on the edge); the vertical one
-  was not passed on.
+  was not passed on, and ODF's `svg:cx` / `svg:cy` had half of it (`svg:cy` the horizontal one).
+- Every fill is even-odd, as CorelDRAW fills (it was solid fills only: a ring of two circles
+  drawn the same way round came out a disc with a fountain or pattern fill).
+- **Full colour (vector) patterns**: the pattern is a CMX file (`vpat`) of its objects, which
+  reach beyond the tile; its header's bounding box is their box, the page of the SVG libcdr makes
+  of it. The tile is in the fill record (versions 6 to 12; 16 and X3+ not seen): of the 21 bytes
+  after the flags, one byte, then the tile as a rectangle of the pattern's own drawing (x0, y0,
+  x1, y1: 32-bit, 1/254000 inch, y up), then 4 bytes. The fill's SVG is cut to it (the root's
+  viewBox and size): the whole page tiled showed the objects with margins round them, or a
+  quarter of the tile. The tile is stretched to the fill's tile size. CorelDRAW 5 patterns are
+  CDR objects on a page of their own, which is the tile.
+- CMX fountain fill types count from 0 (linear, radial, conical, square), CDR's from 1: the
+  radial fills of CMX (vector patterns) came out linear.
 - Two-colour patterns: CorelDRAW 9's PDF export mirrors them (a diagonal hatch turns the other
   way; CorelDRAW itself shows them the way libcdr draws them).
 - Arrowheads go out in their own units (`libcdr:marker-start` / `-end`, SVG path data, with
