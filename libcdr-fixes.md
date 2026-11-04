@@ -188,6 +188,8 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   viewBox and size): the whole page tiled showed the objects with margins round them, or a
   quarter of the tile. The tile is stretched to the fill's tile size. CorelDRAW 5 patterns are
   CDR objects on a page of their own, which is the tile.
+- A fountain fill's angle is the page's in CorelDRAW 5 (-47.5 for a fill of 0 on an object turned
+  by it) and the object's own from version 6: it is turned (and mirrored) with the object.
 - CMX fountain fill types count from 0 (linear, radial, conical, square), CDR's from 1: the
   radial fills of CMX (vector patterns) came out linear.
 - Two-colour patterns: CorelDRAW 9's PDF export mirrors them (a diagonal hatch turns the other
