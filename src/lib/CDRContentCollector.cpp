@@ -934,6 +934,9 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
 
   if (m_fillOpacity < 1.0)
     propList.insert("draw:opacity", m_fillOpacity, librevenge::RVNG_PERCENT);
+  // CorelDRAW fills every object even-odd (a ring of two circles drawn the same way round, with a
+  // gradient or a pattern too)
+  propList.insert("svg:fill-rule", "evenodd");
   if (m_currentFillStyle.fillType == 0)
     propList.insert("draw:fill", "none");
   else
@@ -947,7 +950,6 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
       case 1: // Solid
         propList.insert("draw:fill", "solid");
         propList.insert("draw:fill-color", m_ps.getRGBColorString(m_currentFillStyle.color1));
-        propList.insert("svg:fill-rule", "evenodd");
         break;
       case 2: // Gradient
         if (m_currentFillStyle.gradient.m_stops.empty())
@@ -956,7 +958,6 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
         {
           propList.insert("draw:fill", "solid");
           propList.insert("draw:fill-color", m_ps.getRGBColorString(m_currentFillStyle.gradient.m_stops[0].m_color));
-          propList.insert("svg:fill-rule", "evenodd");
         }
         else if (m_currentFillStyle.gradient.m_stops.size() == 2)
         {
@@ -1135,7 +1136,6 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
           // We did not find the pattern, so fill solid with the background colour
           propList.insert("draw:fill", "solid");
           propList.insert("draw:fill-color", m_ps.getRGBColorString(m_currentFillStyle.color2));
-          propList.insert("svg:fill-rule", "evenodd");
         }
       }
       break;
