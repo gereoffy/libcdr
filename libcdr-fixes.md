@@ -198,6 +198,40 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
   CorelDRAW draws it; it kept its proportions and left a strip of the tile empty.
 - A fountain fill's angle is the page's in CorelDRAW 5 (-47.5 for a fill of 0 on an object turned
   by it) and the object's own from version 6: it is turned (and mirrored) with the object.
+  It is taken in the object's box (its curves', in its own coordinates) stretched to a square,
+  as a direction: (w cos a, h sin a) on a box of w x h. CorelDRAW 9 draws a fill of 135 degrees on
+  a balloon's narrow petals (0.16 x 0.79) all but vertical, as this gives (89.7 and 90.3 degrees
+  on the two turned ones). Checked against CorelDRAW 9 only, the other versions assumed alike;
+  CorelDRAW 2024 writes these fields for older readers so (its version 15 copy of the balloons
+  has 168.6 degrees, which gives back 135), but opens old files with the angle as a plain one
+  (the petals turned by 35 degrees).
+- CorelDRAW X7's fountain fills (CorelDRAW 2024 writes them in its version 15 files too; not in
+  CorelDRAW X5's, whose records end after the stops, nor in X6's) have a matrix of their own after
+  the stops (3 bytes on: 7 doubles, the centre's offset x, y, then a, b, 0, c, d: x' = a x + b y,
+  y' = c x + d y), in the object's box stretched to -0.5 .. 0.5 (up positive): linear across
+  -0.5 .. 0.5 along x, radial a circle of 0.5 (an ellipse of the box), square a square of half
+  side 0.5, conical round the centre from the left, clockwise from the start colour. Turning and
+  skewing the fill (not the object) go there too; the angle, centre offset and edge pad of the
+  record are then what CorelDRAW writes for older readers (an edge pad of 13 for a fill of 30
+  degrees on a square: what makes the old fill as long). Its lines of one colour are stretched
+  with the box: on an ellipse of 2.35 x 0.70, CorelDRAW 2024 draws one of 30 degrees with its
+  colours changing at 63 degrees. Then 8 bytes, the spread (bit 1: repeated, bit 0 with it:
+  mirrored), 5 bytes, the acceleration (a double, -1 .. 1), a byte (1 with an acceleration)
+  and 5 bytes for each stop: 0, its
+  opacity, 0, 0, its midpoint to the next stop (a share of 100; the colours half mixed there,
+  as CorelDRAW 9's two colour midpoint; 0 and 100 too). Given as `libcdr:gradient-matrix-a` ..
+  `-f` (the matrix from the fill's space to the page, as SVG's `matrix(a b c d e f)`),
+  `libcdr:gradient-spread` (`repeat`, `reflect`), `libcdr:gradient-acceleration`, stops with
+  `svg:stop-opacity` and the midpoints as stops of their own. The acceleration makes the colours
+  change faster at the fill's ends, slower in its middle (at 1: the middle colour all along);
+  CorelDRAW 2024's PDF export of a black to white fill at 0, 0.1, .. 1 (256 strips each) gives
+  the curve, symmetric about the middle; no simple formula found to match it (a tangent, a
+  hyperbolic sine and a rational one each miss by up to 3 to 8 % at 0.9). Test drawings made in
+  CorelDRAW 2024 (linear, radial, conical, square, with offsets, turned, skewed, mirrored
+  objects, midpoints, transparent stops, repeated presets, accelerations) match it, but for one
+  sky preset (a radial fill whose matrix makes it 1.8 times smaller than CorelDRAW draws it).
+- (A version 14 clip art's mirrored object, its angle stored as 208.6 where CorelDRAW 2024's
+  version 15 copy has 151.5, fits neither; left as it is, one sample.)
 - CMX fountain fill types count from 0 (linear, radial, conical, square), CDR's from 1: the
   radial fills of CMX (vector patterns) came out linear.
 - Two-colour patterns: CorelDRAW 9's PDF export mirrors them (a diagonal hatch turns the other

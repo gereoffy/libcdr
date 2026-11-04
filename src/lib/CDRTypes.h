@@ -68,9 +68,11 @@ struct CDRGradientStop
 {
   CDRColor m_color;
   double m_offset;
-  CDRGradientStop() : m_color(), m_offset(0.0) {}
+  double m_opacity;    // (CorelDRAW X7+)
+  double m_midPoint;   // to the next stop, where the two are half mixed (CorelDRAW X7+)
+  CDRGradientStop() : m_color(), m_offset(0.0), m_opacity(1.0), m_midPoint(0.5) {}
   CDRGradientStop(const CDRColor &color, double offset)
-    : m_color(color), m_offset(offset) {}
+    : m_color(color), m_offset(offset), m_opacity(1.0), m_midPoint(0.5) {}
 };
 
 struct CDRGradient
@@ -83,9 +85,15 @@ struct CDRGradient
   int m_centerXOffset;
   int m_centerYOffset;
   bool m_objectAngle;   // the angle is the object's own (versions 6+), turned with it; else the page's
+  bool m_boxAngle;      // that one in the object's box stretched to a square (versions 6+, see pageAngle)
+  bool m_hasMatrix;     // CorelDRAW X7+: the fill's matrix in the object's box (see pageAngle)
+  double m_matrix[6];   // (x' = m0 x + m1 y + m4, y' = m2 x + m3 y + m5)
+  unsigned char m_spread;   // with the matrix: past its ends 0 the end colours, 1 repeated, 2 repeated mirrored
+  bool m_stopMidPoints;     // with the matrix: the stops' own midpoints and opacities
+  double m_acceleration;    // with the matrix: -1 .. 1 (0: none)
   std::vector<CDRGradientStop> m_stops;
   CDRGradient()
-    : m_type(0), m_mode(0), m_angle(0.0), m_midPoint(0.0), m_edgeOffset(0), m_centerXOffset(0), m_centerYOffset(0), m_objectAngle(false), m_stops() {}
+    : m_type(0), m_mode(0), m_angle(0.0), m_midPoint(0.0), m_edgeOffset(0), m_centerXOffset(0), m_centerYOffset(0), m_objectAngle(false), m_boxAngle(false), m_hasMatrix(false), m_matrix{1.0, 0.0, 0.0, 1.0, 0.0, 0.0}, m_spread(0), m_stopMidPoints(false), m_acceleration(0.0), m_stops() {}
 };
 
 struct CDRImageFill

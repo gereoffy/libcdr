@@ -9,6 +9,8 @@
 
 #include "CDRContentCollector.h"
 
+#include <algorithm>
+#include <cfloat>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -95,17 +97,111 @@ void normalizeAngle(double &angle)
     angle += 360;
 }
 
-// A fountain fill's angle on the page (radians, counter-clockwise): one of the object's own is
-// turned (and mirrored) with the object
-double pageAngle(const libcdr::CDRGradient &gradient, const libcdr::CDRTransforms &trafos)
+// A path's extent (its curves', not their control points'), in its own coordinates; false if empty
+bool pathBox(const libcdr::CDRPath &path, double &left, double &bottom, double &width, double &height)
 {
+  librevenge::RVNGPropertyListVector nodes;
+  path.writeOut(nodes);
+  double x0 = DBL_MAX, y0 = DBL_MAX, x1 = -DBL_MAX, y1 = -DBL_MAX, px = 0.0, py = 0.0;
+  auto add = [&](double x, double y)
+  {
+    x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x), y1 = std::max(y1, y);
+  };
+  const int steps = 32;
+  for (unsigned long i = 0; i < nodes.count(); ++i)
+  {
+    const librevenge::RVNGPropertyList &n = nodes[i];
+    if (!n["librevenge:path-action"] || !n["svg:x"] || !n["svg:y"])
+      continue;
+    const std::string action = n["librevenge:path-action"]->getStr().cstr();
+    const double x = n["svg:x"]->getDouble(), y = n["svg:y"]->getDouble();
+    if (action == "C" && n["svg:x1"] && n["svg:y1"] && n["svg:x2"] && n["svg:y2"])
+    {
+      const double ax = n["svg:x1"]->getDouble(), ay = n["svg:y1"]->getDouble(), bx = n["svg:x2"]->getDouble(), by = n["svg:y2"]->getDouble();
+      for (int k = 1; k < steps; ++k)
+      {
+        const double t = (double)k / steps, s = 1.0 - t;
+        add(s * s * s * px + 3 * s * s * t * ax + 3 * s * t * t * bx + t * t * t * x, s * s * s * py + 3 * s * s * t * ay + 3 * s * t * t * by + t * t * t * y);
+      }
+    }
+    else if (action == "Q" && n["svg:x1"] && n["svg:y1"])
+    {
+      const double ax = n["svg:x1"]->getDouble(), ay = n["svg:y1"]->getDouble();
+      for (int k = 1; k < steps; ++k)
+      {
+        const double t = (double)k / steps, s = 1.0 - t;
+        add(s * s * px + 2 * s * t * ax + t * t * x, s * s * py + 2 * s * t * ay + t * t * y);
+      }
+    }
+    else if (action == "A" && n["svg:rx"] && n["svg:ry"])
+    {
+      // (the SVG arc's centre from its ends, then points along it)
+      double rx = fabs(n["svg:rx"]->getDouble()), ry = fabs(n["svg:ry"]->getDouble());
+      const double phi = n["librevenge:rotate"] ? n["librevenge:rotate"]->getDouble() * M_PI / 180 : 0.0;
+      const bool large = n["librevenge:large-arc"] && n["librevenge:large-arc"]->getInt(), sweep = n["librevenge:sweep"] && n["librevenge:sweep"]->getInt();
+      const double c = cos(phi), sn = sin(phi), dx = (px - x) / 2, dy = (py - y) / 2;
+      const double x1p = c * dx + sn * dy, y1p = -sn * dx + c * dy;
+      if (rx > 0 && ry > 0)
+      {
+        const double lambda = x1p * x1p / (rx * rx) + y1p * y1p / (ry * ry);
+        if (lambda > 1)
+          rx *= sqrt(lambda), ry *= sqrt(lambda);
+        double num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p, den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+        double f = den > 0 && num > 0 ? sqrt(num / den) : 0.0;
+        if (large == sweep)
+          f = -f;
+        const double cxp = f * rx * y1p / ry, cyp = -f * ry * x1p / rx;
+        const double cx = c * cxp - sn * cyp + (px + x) / 2, cy = sn * cxp + c * cyp + (py + y) / 2;
+        const double t0 = atan2((y1p - cyp) / ry, (x1p - cxp) / rx);
+        double dt = atan2((-y1p - cyp) / ry, (-x1p - cxp) / rx) - t0;
+        if (sweep && dt < 0)
+          dt += 2 * M_PI;
+        else if (!sweep && dt > 0)
+          dt -= 2 * M_PI;
+        for (int k = 1; k < steps; ++k)
+        {
+          const double t = t0 + dt * k / steps;
+          add(cx + rx * cos(t) * c - ry * sin(t) * sn, cy + rx * cos(t) * sn + ry * sin(t) * c);
+        }
+      }
+    }
+    add(x, y);
+    px = x, py = y;
+  }
+  if (x1 < x0 || y1 < y0)
+    return false;
+  left = x0, bottom = y0, width = x1 - x0, height = y1 - y0;
+  return true;
+}
+
+// A fountain fill's angle on the page (radians, counter-clockwise): one of the object's own is
+// turned (and mirrored) with the object. It is the angle in the object's box stretched to a
+// square, as a direction: (w cos a, h sin a) on a box of w x h (CorelDRAW 9 draws a fill of 135
+// degrees on a balloon's narrow petals all but vertical). CorelDRAW X7's fills give their own
+// matrix in that box instead (m_matrix: the fill across -0.5 .. 0.5 along its x), whose lines of
+// one colour are stretched with the box (on a box of 2.35 x 0.70 one of 30 degrees comes out at 63)
+double pageAngle(const libcdr::CDRGradient &gradient, const libcdr::CDRTransforms &trafos, const libcdr::CDRPath &path)
+{
+  double angle = gradient.m_angle, left, bottom, width = 0.0, height = 0.0;
+  if ((gradient.m_boxAngle || gradient.m_hasMatrix) && pathBox(path, left, bottom, width, height) && width > 0 && height > 0)
+  {
+    if (gradient.m_hasMatrix)   // (the normal of the lines: the matrix's inverse's first row, through the box)
+    {
+      const double *m = gradient.m_matrix;
+      angle = atan2(-m[1] / height, m[3] / width);
+      if (m[0] * m[3] - m[1] * m[2] < 0)
+        angle += M_PI;
+    }
+    else
+      angle = atan2(height * sin(angle), width * cos(angle));
+  }
   if (!gradient.m_objectAngle || trafos.empty())
-    return gradient.m_angle;
-  double x0 = 0.0, y0 = 0.0, x1 = cos(gradient.m_angle), y1 = sin(gradient.m_angle);
+    return angle;
+  double x0 = 0.0, y0 = 0.0, x1 = cos(angle), y1 = sin(angle);
   trafos.applyToPoint(x0, y0);
   trafos.applyToPoint(x1, y1);
   if (CDR_ALMOST_ZERO(x1 - x0) && CDR_ALMOST_ZERO(y1 - y0))
-    return gradient.m_angle;
+    return angle;
   return atan2(y1 - y0, x1 - x0);
 }
 
@@ -1054,7 +1150,7 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
         }
         else if (m_currentFillStyle.gradient.m_stops.size() == 2)
         {
-          double angle = pageAngle(m_currentFillStyle.gradient, m_currentTransforms) * 180 / M_PI;
+          double angle = pageAngle(m_currentFillStyle.gradient, m_currentTransforms, m_currentPath) * 180 / M_PI;
           normalizeAngle(angle);
           propList.insert("draw:fill", "gradient");
           propList.insert("draw:start-color", m_ps.getRGBColorString(m_currentFillStyle.gradient.m_stops[0].m_color));
@@ -1106,7 +1202,7 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
         {
           propList.insert("draw:fill", "gradient");
           propList.insert("draw:style", "linear");
-          double angle = pageAngle(m_currentFillStyle.gradient, m_currentTransforms) * 180 / M_PI;
+          double angle = pageAngle(m_currentFillStyle.gradient, m_currentTransforms, m_currentPath) * 180 / M_PI;
           angle += 90.0;
           normalizeAngle(angle);
           propList.insert("draw:angle", (int)angle);
@@ -1130,33 +1226,77 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
           static const char *const types[] = { "linear", "linear", "radial", "conical", "square" };
           const CDRGradient &gradient = m_currentFillStyle.gradient;
           propList.insert("libcdr:gradient-type", types[gradient.m_type < 5 ? gradient.m_type : 0]);
-          propList.insert("libcdr:gradient-angle", pageAngle(gradient, m_currentTransforms) * 180 / M_PI);
+          propList.insert("libcdr:gradient-angle", pageAngle(gradient, m_currentTransforms, m_currentPath) * 180 / M_PI);
           propList.insert("libcdr:gradient-center-x", gradient.m_centerXOffset / 100.0);
           propList.insert("libcdr:gradient-center-y", gradient.m_centerYOffset / 100.0);
           propList.insert("libcdr:gradient-edge", gradient.m_edgeOffset / 100.0);
-          librevenge::RVNGPropertyListVector stops;
-          for (auto &gradStop : gradient.m_stops)
+          // CorelDRAW X7+: the fill's matrix on the page (libcdr:gradient-matrix-a .. -f, as SVG's
+          // matrix(a b c d e f), page units): from its own space, where it runs across -0.5 .. 0.5
+          // along x (a radial or square one to 0.5 from 0, a conical one round 0 from the left),
+          // through the object's box (its centre 0, its sides at -0.5 and 0.5, up positive), the
+          // object's and its group's transforms to the page, as the path. The centre's offset is
+          // the matrix's translation; the edge pad and the angle above are only what CorelDRAW
+          // keeps for older readers.
+          double left, bottom, width, height;
+          if (gradient.m_hasMatrix && pathBox(m_currentPath, left, bottom, width, height) && width > 0 && height > 0)
           {
+            const double *m = gradient.m_matrix;
+            double px[3] = { 0.0, 1.0, 0.0 }, py[3] = { 0.0, 0.0, 1.0 };
+            for (int k = 0; k < 3; ++k)
+            {
+              const double nx = m[0] * px[k] + m[1] * py[k] + m[4], ny = m[2] * px[k] + m[3] * py[k] + m[5];
+              double x = left + width * (0.5 + nx), y = bottom + height * (0.5 + ny);
+              m_currentTransforms.applyToPoint(x, y);
+              if (!m_groupTransforms.empty())
+                m_groupTransforms.top().applyToPoint(x, y);
+              px[k] = x - m_page.offsetX;
+              py[k] = m_page.height - (y - m_page.offsetY);
+            }
+            propList.insert("libcdr:gradient-matrix-a", px[1] - px[0]);
+            propList.insert("libcdr:gradient-matrix-b", py[1] - py[0]);
+            propList.insert("libcdr:gradient-matrix-c", px[2] - px[0]);
+            propList.insert("libcdr:gradient-matrix-d", py[2] - py[0]);
+            propList.insert("libcdr:gradient-matrix-e", px[0]);
+            propList.insert("libcdr:gradient-matrix-f", py[0]);
+          }
+          if (gradient.m_spread)
+            propList.insert("libcdr:gradient-spread", gradient.m_spread == 1 ? "repeat" : "reflect");
+          // (-1 .. 1: the colours change faster at the fill's ends than in its middle, or the other
+          // way; libcdr's own, the curve the consumer's)
+          if (gradient.m_acceleration != 0.0)
+            propList.insert("libcdr:gradient-acceleration", gradient.m_acceleration);
+          librevenge::RVNGPropertyListVector stops;
+          for (size_t k = 0; k < gradient.m_stops.size(); ++k)
+          {
+            const CDRGradientStop &gradStop = gradient.m_stops[k];
             librevenge::RVNGPropertyList stopElement;
             stopElement.insert("svg:offset", gradStop.m_offset, librevenge::RVNG_PERCENT);
             stopElement.insert("svg:stop-color", m_ps.getRGBColorString(gradStop.m_color));
+            if (gradStop.m_opacity < 1.0)
+              stopElement.insert("svg:stop-opacity", gradStop.m_opacity, librevenge::RVNG_PERCENT);
             stops.append(stopElement);
-            // a two colour fill's midpoint (versions 7+; 0 before): the colours half mixed there,
-            // evenly on both sides of it (as CorelDRAW 9's PDF exports show)
-            if (gradient.m_stops.size() == 2 && &gradStop == &gradient.m_stops[0] && gradient.m_midPoint > 0.0
-                && gradient.m_midPoint < 1.0 && gradient.m_midPoint != 0.5)
-            {
-              const unsigned a = m_ps._getRGBColor(gradient.m_stops[0].m_color);
-              const unsigned b = m_ps._getRGBColor(gradient.m_stops[1].m_color);
-              const double at = gradient.m_stops[0].m_offset + gradient.m_midPoint * (gradient.m_stops[1].m_offset - gradient.m_stops[0].m_offset);
-              librevenge::RVNGString mixed;
-              mixed.sprintf("#%.2x%.2x%.2x", (((a >> 16) & 0xff) + ((b >> 16) & 0xff) + 1) / 2,
-                            (((a >> 8) & 0xff) + ((b >> 8) & 0xff) + 1) / 2, ((a & 0xff) + (b & 0xff) + 1) / 2);
-              librevenge::RVNGPropertyList midElement;
-              midElement.insert("svg:offset", at, librevenge::RVNG_PERCENT);
-              midElement.insert("svg:stop-color", mixed);
-              stops.append(midElement);
-            }
+            // the midpoint to the next stop: the two colours half mixed there, evenly on both sides
+            // of it (as CorelDRAW 9's PDF exports show). A two colour fill's own (versions 7 to 14; 0
+            // before: not set), with a matrix each stop's (0 and 1 too: half mixed at a stop)
+            if (k + 1 >= gradient.m_stops.size())
+              continue;
+            const double mid = gradient.m_stopMidPoints ? gradStop.m_midPoint : gradient.m_stops.size() == 2 ? gradient.m_midPoint : 0.5;
+            if (mid == 0.5 || mid < 0.0 || mid > 1.0 || (!gradient.m_stopMidPoints && (mid <= 0.0 || mid >= 1.0)))
+              continue;
+            const CDRGradientStop &next = gradient.m_stops[k + 1];
+            const unsigned a = m_ps._getRGBColor(gradStop.m_color);
+            const unsigned b = m_ps._getRGBColor(next.m_color);
+            librevenge::RVNGString mixed;
+            mixed.sprintf("#%.2x%.2x%.2x", (((a >> 16) & 0xff) + ((b >> 16) & 0xff) + 1) / 2,
+                          (((a >> 8) & 0xff) + ((b >> 8) & 0xff) + 1) / 2, ((a & 0xff) + (b & 0xff) + 1) / 2);
+            librevenge::RVNGPropertyList midElement;
+            // (0: just after the stop, not on it: a consumer takes the first of two stops at one offset)
+            const double at = std::min(std::max(mid, 1e-4), 1.0 - 1e-4);
+            midElement.insert("svg:offset", gradStop.m_offset + at * (next.m_offset - gradStop.m_offset), librevenge::RVNG_PERCENT);
+            midElement.insert("svg:stop-color", mixed);
+            if (gradStop.m_opacity < 1.0 || next.m_opacity < 1.0)
+              midElement.insert("svg:stop-opacity", (gradStop.m_opacity + next.m_opacity) / 2, librevenge::RVNG_PERCENT);
+            stops.append(midElement);
           }
           propList.insert("libcdr:gradient-stops", stops);
         }

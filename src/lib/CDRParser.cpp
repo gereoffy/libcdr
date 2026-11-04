@@ -15,6 +15,7 @@
 #include <math.h>
 #include <string.h>
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 #include <set>
 #ifndef BOOST_ALL_NO_LIB
@@ -1521,6 +1522,7 @@ void libcdr::CDRParser::readFild(librevenge::RVNGInputStream *input, unsigned le
 {
   if (!_redirectX6Chunk(&input, length))
     throw GenericException();
+  const long recordEnd = input->tell() + (long)length;
   unsigned fillId = readU32(input);
   if (m_version >= 1300)
     input->seek(8, librevenge::RVNG_SEEK_CUR);
@@ -1564,6 +1566,7 @@ void libcdr::CDRParser::readFild(librevenge::RVNGInputStream *input, unsigned le
     }
     gradient.m_angle = readAngle(input);
     gradient.m_objectAngle = m_version >= 600;   // (CorelDRAW 5: -47.5 for a fill of 0 on an object turned by it)
+    gradient.m_boxAngle = m_version >= 600;
     gradient.m_centerXOffset = readInteger(input);
     gradient.m_centerYOffset = readInteger(input);
     if (m_version >= 600)
@@ -1587,6 +1590,55 @@ void libcdr::CDRParser::readFild(librevenge::RVNGInputStream *input, unsigned le
       if (m_version >= 1300)
         input->seek(3, librevenge::RVNG_SEEK_CUR);
       gradient.m_stops.push_back(stop);
+    }
+    // the fill's matrix in the object's box (CorelDRAW X7's fountain fills, which CorelDRAW 2024
+    // writes in its version 15 files too; not in CorelDRAW X5's, whose records end before it, nor
+    // X6's): 3 bytes on, its offset, then its 2 x 2 part; taken when the record holds it and it
+    // makes sense
+    if (m_version >= 1500 && input->tell() + 3 + 7 * 8 <= recordEnd)
+    {
+      input->seek(3, librevenge::RVNG_SEEK_CUR);
+      double v[7];
+      for (double &d : v)
+        d = readDouble(input);
+      const double det = v[2] * v[6] - v[3] * v[5];
+      bool sane = std::isfinite(det) && fabs(det) > 1e-6 && v[4] == 0.0;
+      for (double d : v)
+        sane = sane && std::isfinite(d) && fabs(d) < 1e3;
+      if (sane)
+      {
+        const double m[6] = { v[2], v[3], v[5], v[6], v[0], v[1] };
+        std::copy(m, m + 6, gradient.m_matrix);
+        gradient.m_hasMatrix = true;
+        // then 8 bytes, the spread (bit 1: repeated, bit 0 with it: mirrored), 5 bytes, the
+        // acceleration (a double, -1 .. 1), a byte (1 with an acceleration), and for each stop 5
+        // bytes: 0, its opacity, 0, 0, its midpoint to the next one (a share of 100)
+        if (input->tell() + 8 + 1 + 5 + 8 + 1 + 5 * (long)gradient.m_stops.size() <= recordEnd)
+        {
+          input->seek(8, librevenge::RVNG_SEEK_CUR);
+          const unsigned char spread = readU8(input);
+          input->seek(5, librevenge::RVNG_SEEK_CUR);
+          const double acceleration = readDouble(input);
+          input->seek(1, librevenge::RVNG_SEEK_CUR);
+          std::vector<std::pair<double, double> > more;
+          bool valid = spread <= 3;
+          for (size_t i = 0; i < gradient.m_stops.size(); ++i)
+          {
+            const unsigned char e0 = readU8(input), opacity = readU8(input), e2 = readU8(input), e3 = readU8(input), midPoint = readU8(input);
+            valid = valid && !e0 && !e2 && !e3 && midPoint <= 100;
+            more.push_back(std::make_pair(opacity / 255.0, midPoint / 100.0));
+          }
+          if (valid)
+          {
+            gradient.m_spread = (spread & 2) ? ((spread & 1) ? 2 : 1) : 0;
+            if (std::isfinite(acceleration) && fabs(acceleration) <= 1.0)
+              gradient.m_acceleration = acceleration;
+            for (size_t i = 0; i < more.size(); ++i)
+              gradient.m_stops[i].m_opacity = more[i].first, gradient.m_stops[i].m_midPoint = more[i].second;
+            gradient.m_stopMidPoints = true;
+          }
+        }
+      }
     }
   }
   break;
