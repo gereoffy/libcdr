@@ -18,7 +18,20 @@
  * using "xxd -i" command
  */
 
-static const unsigned char CMYK_icc[] =
+/* With external C linkage, so that an application linking libcdr statically can convert its own
+ * CMYK colours with the same profile instead of carrying a second copy of it: declare
+ *   extern const unsigned char CMYK_icc[]; extern const unsigned CMYK_icc_size;
+ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern const unsigned char CMYK_icc[];
+extern const unsigned CMYK_icc_size;
+#ifdef __cplusplus
+}
+#endif
+
+const unsigned char CMYK_icc[] =
 {
   0x00, 0x02, 0xa1, 0xe0, 0x6c, 0x63, 0x6d, 0x73, 0x04, 0x30, 0x00, 0x00,
   0x73, 0x63, 0x6e, 0x72, 0x43, 0x4d, 0x59, 0x4b, 0x4c, 0x61, 0x62, 0x20,
@@ -14397,3 +14410,5 @@ static const unsigned char CMYK_icc[] =
   0x00, 0x79, 0x00, 0x20, 0x00, 0x62, 0x00, 0x75, 0x00, 0x69, 0x00, 0x6c,
   0x00, 0x74, 0x00, 0x2d, 0x00, 0x69, 0x00, 0x6e, 0x00, 0x00, 0x00, 0x00
 };
+
+const unsigned CMYK_icc_size = sizeof(CMYK_icc);
