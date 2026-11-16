@@ -15,6 +15,7 @@
 #include <string>
 #include <utility>
 
+#include <locale.h>
 #include <math.h>
 #include <string.h>
 #include <librevenge/librevenge.h>
@@ -43,6 +44,23 @@ namespace libcdr
 namespace
 {
 
+// A text sprintf wrote numbers into, with '.' as their decimal point whatever the locale's is (it
+// goes into SVG; as librevenge's double properties do it). The text has no such character of its own.
+librevenge::RVNGString plainNumbers(const librevenge::RVNGString &text)
+{
+#ifndef __ANDROID__
+  const std::string point(localeconv()->decimal_point);
+#else
+  const std::string point(".");
+#endif
+  if (point.empty() || point == ".")
+    return text;
+  std::string s(text.cstr());
+  for (size_t at = 0; (at = s.find(point, at)) != std::string::npos; ++at)
+    s.replace(at, point.size(), ".");
+  return librevenge::RVNGString(s.c_str());
+}
+
 // An arrowhead's outline as SVG path data in its own units, as its arrw record gives it (libcdr's
 // own libcdr:marker-start / -end: draw:marker-*-path is transformed for ODF's drawing of markers)
 librevenge::RVNGString markerPath(const libcdr::CDRPath &marker)
@@ -64,7 +82,7 @@ librevenge::RVNGString markerPath(const libcdr::CDRPath &marker)
       part.sprintf("%s%g %g", action.cstr(), e["svg:x"]->getDouble(), e["svg:y"]->getDouble());
     else if (action == "Z")
       part = "Z";
-    out.append(part);
+    out.append(plainNumbers(part));
   }
   return out;
 }
@@ -276,7 +294,7 @@ librevenge::RVNGBinaryData tileSVG(const librevenge::RVNGBinaryData &svg, const 
   attributes.sprintf(" width=\"%.4fin\" height=\"%.4fin\" viewBox=\"%.4f %.4f %.4f %.4f\"", tile.getWidth(), tile.getHeight(),
                      (tile.getMinX() - page.getMinX()) * 72.0, (page.getMinY() + page.getHeight() - tile.getMinY() - tile.getHeight()) * 72.0,
                      tile.getWidth() * 72.0, tile.getHeight() * 72.0);
-  tag += attributes.cstr();
+  tag += plainNumbers(attributes).cstr();
   s.replace(start, end - start, tag);
   return librevenge::RVNGBinaryData((const unsigned char *)s.data(), s.size());
 }

@@ -241,6 +241,9 @@ paragraph margins, its own `libcdr:` span properties), the renderer lays the tex
 - Speed: bitmaps written into a plain buffer with each colour converted once, X6+ style strings
   parsed once, path nodes moved instead of copied.
 - ICU is replaced with iconv (and MultiByteToWideChar on Windows).
+- Numbers that `sprintf` writes into SVG text (arrowheads' path data, a vector pattern's size and
+  view box) get a '.' as their decimal point whatever the locale's is (a ',' in many locales
+  broke them), as librevenge's own double properties have.
 
 ## CorelDRAW 2 (`WL`) and 3
 
